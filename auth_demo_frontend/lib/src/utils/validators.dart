@@ -23,6 +23,14 @@ class Validators {
     return null;
   }
 
+  /// Validates an email address that is required (must be non-empty and valid).
+  static String? emailRequired(String? v) {
+    final String value = (v ?? '').trim();
+    if (value.isEmpty) return 'Email is required';
+    if (!_emailRe.hasMatch(value)) return 'Enter a valid email';
+    return null;
+  }
+
   static String? emailOptional(String? v) {
     final String value = (v ?? '').trim();
     if (value.isEmpty) return null;

@@ -101,17 +101,18 @@ class AuthApi {
   }
 
   /// Password flow signup:
-  /// POST /auth/signup { phone, email?, password }
+  /// POST /auth/signup { phone, email, password }
   Future<Map<String, dynamic>> signupWithPassword({
     required String phone,
-    String? email,
+    required String email,
     required String password,
     String? name,
     required bool consentAccepted,
   }) {
     return _postJson('/auth/signup', <String, dynamic>{
       'phone': phone,
-      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      // Email is required in password-based signup.
+      'email': email.trim(),
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
       'consentAccepted': consentAccepted,

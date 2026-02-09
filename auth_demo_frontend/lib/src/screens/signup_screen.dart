@@ -197,7 +197,8 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       await _api.signupWithPassword(
         phone: phone,
-        email: email.isEmpty ? null : email,
+        // Email is required for the password-based signup flow.
+        email: email,
         name: name.isEmpty ? null : name,
         password: password,
         consentAccepted: true,
@@ -268,11 +269,13 @@ class _SignupScreenState extends State<SignupScreen> {
             TextFormField(
               controller: _emailCtrl,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email (optional)',
-                prefixIcon: Icon(Icons.email_outlined),
+              decoration: InputDecoration(
+                labelText: otpMode ? 'Email (optional)' : 'Email',
+                prefixIcon: const Icon(Icons.email_outlined),
               ),
-              validator: (String? v) => Validators.emailOptional(v),
+              // Email is optional for OTP signup, required for password signup.
+              validator: (String? v) =>
+                  otpMode ? Validators.emailOptional(v) : Validators.emailRequired(v),
             ),
             const SizedBox(height: 12),
             TextFormField(
