@@ -8,7 +8,8 @@ plugins {
 android {
     namespace = "com.example.auth_demo_frontend"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Required by flutter_secure_storage/path_provider/shared_preferences/sqflite plugins.
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

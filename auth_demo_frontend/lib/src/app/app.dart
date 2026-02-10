@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/dashboard_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/signup_screen.dart';
 import '../theme/app_theme.dart';
@@ -13,10 +14,11 @@ class AuthDemoApp extends StatelessWidget {
       title: 'Auth Demo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: SignupScreen.routeName,
+      initialRoute: LoginScreen.routeName,
       routes: <String, WidgetBuilder>{
         SignupScreen.routeName: (_) => const SignupScreen(),
         LoginScreen.routeName: (_) => const LoginScreen(),
+        DashboardScreen.routeName: (_) => const DashboardScreen(),
       },
     );
   }

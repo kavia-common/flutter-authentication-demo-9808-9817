@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_api.dart';
+import '../services/auth_session.dart';
 import '../utils/validators.dart';
 import '../widgets/auth_scaffold.dart';
+import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 
 enum LoginMode {
@@ -31,11 +33,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _resetNewPasswordCtrl = TextEditingController();
 
   final AuthApi _api = AuthApi();
+  final AuthSession _session = AuthSession();
 
   LoginMode _mode = LoginMode.password;
 
   bool _isLoading = false;
   bool _otpRequested = false;
+
+  bool _navigateToDashboard = false;
 
   // Client-side edge-case counters (backend should enforce lockout).
   int _failedPasswordAttempts = 0;
@@ -79,14 +84,15 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _api.loginWithPassword(phoneOrEmail: phoneOrEmail, password: password);
+      final Map<String, dynamic> res =
+          await _api.loginWithPassword(phoneOrEmail: phoneOrEmail, password: password);
 
-      // On success, backend returns JWT + refresh token.
-      // This demo keeps it UI-only; token storage can be added with
-      // shared_preferences if needed by the broader project.
+      await _session.saveTokensFromResponse(res);
+
       setState(() {
         _isLoading = false;
         _successMessage = 'Logged in successfully.';
+        _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
       setState(() {
@@ -121,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _api.requestOtp(phone: phone);
+      await _api.requestOtp(phone: phone, purpose: 'login');
       setState(() {
         _isLoading = false;
         _otpRequested = true;
@@ -170,11 +176,13 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _api.verifyOtp(phone: phone, otp: otp);
+      final Map<String, dynamic> res = await _api.verifyOtp(phone: phone, otp: otp);
+      await _session.saveTokensFromResponse(res);
 
       setState(() {
         _isLoading = false;
         _successMessage = 'Logged in successfully via OTP.';
+        _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
       setState(() {
@@ -274,6 +282,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_navigateToDashboard) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          DashboardScreen.routeName,
+          (Route<dynamic> r) => false,
+        );
+      });
+    }
+
     final bool passwordMode = _mode == LoginMode.password;
 
     return AuthScaffold(

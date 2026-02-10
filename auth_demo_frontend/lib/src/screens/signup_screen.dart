@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_api.dart';
+import '../services/auth_session.dart';
 import '../utils/validators.dart';
 import '../widgets/auth_scaffold.dart';
+import 'dashboard_screen.dart';
 import 'login_screen.dart';
 
 enum SignupMode {
@@ -29,12 +31,15 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _passwordCtrl = TextEditingController();
 
   final AuthApi _api = AuthApi();
+  final AuthSession _session = AuthSession();
 
   SignupMode _mode = SignupMode.otp;
   bool _consentAccepted = false;
 
   bool _isLoading = false;
   bool _otpRequested = false;
+
+  bool _navigateToDashboard = false;
 
   // Keep all user-facing messages in primitives only to avoid async context issues.
   String? _errorMessage;
@@ -148,13 +153,13 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      await _api.verifyOtp(phone: phone, otp: otp);
+      final Map<String, dynamic> res = await _api.verifyOtp(phone: phone, otp: otp);
+      await _session.saveTokensFromResponse(res);
 
-      // In the provided workflow: OTP verify -> create user doc + generate JWT.
-      // If backend returns tokens, they would be in the response body; we keep UI-only here.
       setState(() {
         _isLoading = false;
         _successMessage = 'Account created and verified successfully.';
+        _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
       final bool isOtpWrong = (e.statusCode == 400 || e.statusCode == 401);
@@ -195,7 +200,7 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      await _api.signupWithPassword(
+      final Map<String, dynamic> res = await _api.signupWithPassword(
         phone: phone,
         // Email is required for the password-based signup flow.
         email: email,
@@ -204,9 +209,12 @@ class _SignupScreenState extends State<SignupScreen> {
         consentAccepted: true,
       );
 
+      await _session.saveTokensFromResponse(res);
+
       setState(() {
         _isLoading = false;
-        _successMessage = 'Account created successfully. You can now log in.';
+        _successMessage = 'Account created successfully.';
+        _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
       setState(() {
@@ -223,6 +231,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_navigateToDashboard) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          DashboardScreen.routeName,
+          (Route<dynamic> r) => false,
+        );
+      });
+    }
+
     final bool otpMode = _mode == SignupMode.otp;
 
     return AuthScaffold(

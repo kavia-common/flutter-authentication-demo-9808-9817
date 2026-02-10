@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'auth_session.dart';
+
 /// Simple exception wrapper to surface API errors to the UI.
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
@@ -17,7 +19,7 @@ class ApiException implements Exception {
 ///
 /// Note: Base URL is intentionally configurable. If you need to point this app at
 /// a specific backend host, set it via `AuthApi(baseUrl: ...)` from a config
-/// layer (e.g., dotenv). This task keeps it simple and uses a default.
+/// layer (e.g., dotenv).
 ///
 /// IMPORTANT: Do not hardcode secrets in the client.
 class AuthApi {
@@ -27,32 +29,34 @@ class AuthApi {
 
   Uri _uri(String path) => Uri.parse('$_baseUrl$path');
 
-  Future<Map<String, dynamic>> _postJson(
-    String path,
-    Map<String, dynamic> body,
-  ) async {
-    final http.Response res = await http.post(
-      _uri(path),
-      headers: const <String, String>{
+  Map<String, String> _jsonHeaders({String? bearerToken}) => <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-      },
-      body: jsonEncode(body),
-    );
+        if (bearerToken != null && bearerToken.isNotEmpty)
+          'Authorization': 'Bearer $bearerToken',
+      };
 
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      String message = 'Request failed';
-      try {
-        final dynamic decoded = jsonDecode(res.body);
-        if (decoded is Map && decoded['detail'] is String) {
-          message = decoded['detail'] as String;
-        } else if (decoded is Map && decoded['message'] is String) {
-          message = decoded['message'] as String;
-        }
-      } catch (_) {
-        // Keep generic message.
+  String _errorMessageFromBody(String body, {String fallback = 'Request failed'}) {
+    String message = fallback;
+    try {
+      final dynamic decoded = jsonDecode(body);
+      if (decoded is Map && decoded['detail'] is String) {
+        message = decoded['detail'] as String;
+      } else if (decoded is Map && decoded['message'] is String) {
+        message = decoded['message'] as String;
       }
-      throw ApiException(message, statusCode: res.statusCode);
+    } catch (_) {
+      // Keep generic message.
+    }
+    return message;
+  }
+
+  Future<Map<String, dynamic>> _handleJsonResponse(http.Response res) async {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        _errorMessageFromBody(res.body),
+        statusCode: res.statusCode,
+      );
     }
 
     if (res.body.trim().isEmpty) {
@@ -64,6 +68,54 @@ class AuthApi {
       return decoded;
     }
     throw ApiException('Unexpected response format', statusCode: res.statusCode);
+  }
+
+  Future<Map<String, dynamic>> _postJson(
+    String path,
+    Map<String, dynamic> body, {
+    String? bearerToken,
+  }) async {
+    final http.Response res = await http.post(
+      _uri(path),
+      headers: _jsonHeaders(bearerToken: bearerToken),
+      body: jsonEncode(body),
+    );
+    return _handleJsonResponse(res);
+  }
+
+  /// Performs a POST with auth:
+  /// - attaches Authorization header
+  /// - on 401, refreshes and retries once
+  Future<Map<String, dynamic>> postJsonWithAuth(
+    String path,
+    Map<String, dynamic> body, {
+    required AuthSession session,
+  }) async {
+    final String? accessToken = await session.getAccessToken();
+
+    http.Response res = await http.post(
+      _uri(path),
+      headers: _jsonHeaders(bearerToken: accessToken),
+      body: jsonEncode(body),
+    );
+
+    if (res.statusCode != 401) {
+      return _handleJsonResponse(res);
+    }
+
+    // Refresh and retry once
+    final String? refreshed = await session.refreshAccessToken();
+    if (refreshed == null || refreshed.isEmpty) {
+      throw ApiException('Session expired. Please log in again.', statusCode: 401);
+    }
+
+    res = await http.post(
+      _uri(path),
+      headers: _jsonHeaders(bearerToken: refreshed),
+      body: jsonEncode(body),
+    );
+
+    return _handleJsonResponse(res);
   }
 
   /// Login with password:
@@ -80,11 +132,15 @@ class AuthApi {
 
   /// Request OTP for login/signup:
   /// POST /auth/otp/request
+  ///
+  /// Backend may accept purpose; if unsupported it can be ignored server-side.
   Future<Map<String, dynamic>> requestOtp({
     required String phone,
+    String? purpose,
   }) {
     return _postJson('/auth/otp/request', <String, dynamic>{
       'phone': phone,
+      if (purpose != null) 'purpose': purpose,
     });
   }
 
@@ -111,7 +167,6 @@ class AuthApi {
   }) {
     return _postJson('/auth/signup', <String, dynamic>{
       'phone': phone,
-      // Email is required in password-based signup.
       'email': email.trim(),
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
