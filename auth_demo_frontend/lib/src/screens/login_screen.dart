@@ -328,6 +328,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (passwordMode) ...<Widget>[
                   TextFormField(
                     controller: _phoneOrEmailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const <String>[
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
                     decoration: const InputDecoration(
                       labelText: 'Phone or email',
                       prefixIcon: Icon(Icons.person_outline),
@@ -338,6 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: _passwordCtrl,
                     obscureText: true,
+                    autofillHints: const <String>[AutofillHints.password],
                     decoration: const InputDecoration(
                       labelText: 'Password',
                       prefixIcon: Icon(Icons.lock_outline),
@@ -369,6 +375,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: 'Reset OTP',
                         prefixIcon: Icon(Icons.pin_outlined),
                       ),
+                      validator: (String? v) {
+                        // Only validate when the user is attempting reset confirm.
+                        // This field appears after a reset request; keeping it strict is OK.
+                        return Validators.otp(v);
+                      },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -378,6 +389,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: 'New password',
                         prefixIcon: Icon(Icons.lock_reset_outlined),
                       ),
+                      validator: (String? v) => Validators.password(v),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(

@@ -1,8 +1,11 @@
 class Validators {
   // Very small email validator suitable for UI validation.
+  // This is intentionally not RFC-perfect; backend should be authoritative.
   static final RegExp _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
-  // E.164-ish phone validation (basic): + optional, 8-15 digits.
+  // E.164-ish phone validation:
+  // - optional leading +
+  // - 8..15 digits total (common E.164 constraint is 15 digits max)
   static final RegExp _phoneRe = RegExp(r'^\+?[0-9]{8,15}$');
 
   // OTP validation: 4-8 digits typical.
@@ -19,7 +22,9 @@ class Validators {
   static String? phone(String? v) {
     final String value = (v ?? '').trim();
     if (value.isEmpty) return 'Phone is required';
-    if (!_phoneRe.hasMatch(value)) return 'Enter a valid phone number';
+    if (!_phoneRe.hasMatch(value)) {
+      return 'Enter a valid phone number (8–15 digits, optional +)';
+    }
     return null;
   }
 
@@ -41,16 +46,35 @@ class Validators {
   static String? phoneOrEmail(String? v) {
     final String value = (v ?? '').trim();
     if (value.isEmpty) return 'Phone or email is required';
+
     final bool isEmail = _emailRe.hasMatch(value);
     final bool isPhone = _phoneRe.hasMatch(value);
+
     if (!isEmail && !isPhone) return 'Enter a valid phone or email';
     return null;
   }
 
   static String? password(String? v) {
-    final String value = (v ?? '');
-    if (value.trim().isEmpty) return 'Password is required';
+    // Stronger UI policy (backend must still enforce):
+    // - min 8 chars
+    // - at least one letter and one number
+    // - reject common whitespace-only / accidental leading-trailing spaces
+    final String raw = v ?? '';
+    if (raw.trim().isEmpty) return 'Password is required';
+
+    final String value = raw;
     if (value.length < 8) return 'Password must be at least 8 characters';
+
+    final bool hasLetter = value.contains(RegExp(r'[A-Za-z]'));
+    final bool hasNumber = value.contains(RegExp(r'[0-9]'));
+    if (!hasLetter || !hasNumber) {
+      return 'Password must include at least 1 letter and 1 number';
+    }
+
+    if (value.contains(' ')) {
+      return 'Password must not contain spaces';
+    }
+
     return null;
   }
 
