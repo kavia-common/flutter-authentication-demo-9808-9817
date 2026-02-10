@@ -14,7 +14,12 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+
+    // Ocean Professional background: subtle blue wash into light surface.
+    final Color topTint = scheme.primary.withAlpha(26);
+    final Color midTint = scheme.primary.withAlpha(10);
 
     return Scaffold(
       body: SafeArea(
@@ -22,11 +27,13 @@ class AuthScaffold extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: <Color>[
-                scheme.primary.withAlpha(28),
-                const Color(0xFFF9FAFB),
+                topTint,
+                midTint,
+                theme.scaffoldBackgroundColor,
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              stops: const <double>[0, 0.55, 1],
             ),
           ),
           alignment: Alignment.center,
@@ -35,23 +42,21 @@ class AuthScaffold extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 520),
             child: Card(
               child: Padding(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style: theme.textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 6),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.black.withAlpha(140),
-                          ),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface.withAlpha(160),
+                      ),
                     ),
                     const SizedBox(height: 18),
                     child,
