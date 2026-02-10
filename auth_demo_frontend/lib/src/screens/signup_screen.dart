@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_error.dart';
 import '../services/auth_api.dart';
 import '../services/auth_session.dart';
 import '../utils/validators.dart';
@@ -103,6 +104,18 @@ class _SignupScreenState extends State<SignupScreen> {
         _successMessage = 'OTP sent. Please check your messages.';
       });
     } on ApiException catch (e) {
+      if (e.code == BackendErrorCode.rateLimited) {
+        // Mirror server rate limit with a friendlier message; keep existing local caps.
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.retryAfterSeconds != null
+              ? 'Too many requests. Try again in ${e.retryAfterSeconds} seconds.'
+              : 'Too many requests. Please wait before trying again.';
+          _successMessage = null;
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
         _errorMessage = e.message;
@@ -162,6 +175,38 @@ class _SignupScreenState extends State<SignupScreen> {
         _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
+      if (e.code == BackendErrorCode.otpExpired) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'OTP expired. Please request a new OTP.';
+          _successMessage = null;
+          _otpRequested = false;
+        });
+        return;
+      }
+
+      if (e.code == BackendErrorCode.otpRetryExceeded) {
+        // Force local lock immediately (existing guard uses _maxOtpVerifyFails).
+        setState(() {
+          _isLoading = false;
+          _otpVerifyFailCount = _maxOtpVerifyFails;
+          _errorMessage = 'Too many incorrect OTP attempts. Try again later.';
+          _successMessage = null;
+        });
+        return;
+      }
+
+      if (e.code == BackendErrorCode.rateLimited) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.retryAfterSeconds != null
+              ? 'Too many requests. Try again in ${e.retryAfterSeconds} seconds.'
+              : 'Too many requests. Please wait before trying again.';
+          _successMessage = null;
+        });
+        return;
+      }
+
       final bool isOtpWrong = (e.statusCode == 400 || e.statusCode == 401);
       setState(() {
         _isLoading = false;
@@ -217,6 +262,27 @@ class _SignupScreenState extends State<SignupScreen> {
         _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
+      if (e.code == BackendErrorCode.duplicateUser) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              'An account already exists for this phone/email. Please log in instead.';
+          _successMessage = null;
+        });
+        return;
+      }
+
+      if (e.code == BackendErrorCode.rateLimited) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.retryAfterSeconds != null
+              ? 'Too many requests. Try again in ${e.retryAfterSeconds} seconds.'
+              : 'Too many requests. Please wait before trying again.';
+          _successMessage = null;
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
         _errorMessage = e.message;

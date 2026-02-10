@@ -2,18 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'api_error.dart';
 import 'auth_session.dart';
-
-/// Simple exception wrapper to surface API errors to the UI.
-class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode});
-
-  final String message;
-  final int? statusCode;
-
-  @override
-  String toString() => 'ApiException($statusCode): $message';
-}
 
 /// Auth API client for the required FastAPI endpoints.
 ///
@@ -36,26 +26,14 @@ class AuthApi {
           'Authorization': 'Bearer $bearerToken',
       };
 
-  String _errorMessageFromBody(String body, {String fallback = 'Request failed'}) {
-    String message = fallback;
-    try {
-      final dynamic decoded = jsonDecode(body);
-      if (decoded is Map && decoded['detail'] is String) {
-        message = decoded['detail'] as String;
-      } else if (decoded is Map && decoded['message'] is String) {
-        message = decoded['message'] as String;
-      }
-    } catch (_) {
-      // Keep generic message.
-    }
-    return message;
-  }
-
   Future<Map<String, dynamic>> _handleJsonResponse(http.Response res) async {
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw ApiException(
-        _errorMessageFromBody(res.body),
-        statusCode: res.statusCode,
+        ApiErrorDetails.fromHttpBody(
+          statusCode: res.statusCode,
+          body: res.body,
+          fallbackMessage: 'Request failed',
+        ),
       );
     }
 
@@ -106,7 +84,13 @@ class AuthApi {
     // Refresh and retry once
     final String? refreshed = await session.refreshAccessToken();
     if (refreshed == null || refreshed.isEmpty) {
-      throw ApiException('Session expired. Please log in again.', statusCode: 401);
+      throw ApiException(
+        ApiErrorDetails(
+          code: BackendErrorCode.unknown,
+          userMessage: 'Session expired. Please log in again.',
+          statusCode: 401,
+        ),
+      );
     }
 
     res = await http.post(

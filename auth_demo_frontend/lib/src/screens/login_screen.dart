@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../services/api_error.dart';
 import '../services/auth_api.dart';
 import '../services/auth_session.dart';
 import '../utils/validators.dart';
@@ -47,11 +50,22 @@ class _LoginScreenState extends State<LoginScreen> {
   static const int _lockoutAfter = 5;
   bool get _lockedOut => _failedPasswordAttempts >= _lockoutAfter;
 
+  // OTP UX primitives for tailored backend errors.
+  int _otpCooldownSecondsLeft = 0;
+  int _otpLockoutSecondsLeft = 0;
+  Timer? _otpCooldownTimer;
+  Timer? _otpLockoutTimer;
+
+  bool get _otpCoolingDown => _otpCooldownSecondsLeft > 0;
+  bool get _otpLockedOut => _otpLockoutSecondsLeft > 0;
+
   String? _errorMessage;
   String? _successMessage;
 
   @override
   void dispose() {
+    _otpCooldownTimer?.cancel();
+    _otpLockoutTimer?.cancel();
     _phoneOrEmailCtrl.dispose();
     _passwordCtrl.dispose();
     _otpPhoneCtrl.dispose();
@@ -59,6 +73,42 @@ class _LoginScreenState extends State<LoginScreen> {
     _resetOtpCtrl.dispose();
     _resetNewPasswordCtrl.dispose();
     super.dispose();
+  }
+
+  void _startOtpCooldown(int seconds) {
+    final int duration = seconds <= 0 ? 30 : seconds;
+    _otpCooldownTimer?.cancel();
+    setState(() {
+      _otpCooldownSecondsLeft = duration;
+    });
+    _otpCooldownTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) return;
+      setState(() {
+        _otpCooldownSecondsLeft -= 1;
+        if (_otpCooldownSecondsLeft <= 0) {
+          _otpCooldownSecondsLeft = 0;
+          t.cancel();
+        }
+      });
+    });
+  }
+
+  void _startOtpLockout(int seconds) {
+    final int duration = seconds <= 0 ? 300 : seconds;
+    _otpLockoutTimer?.cancel();
+    setState(() {
+      _otpLockoutSecondsLeft = duration;
+    });
+    _otpLockoutTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) return;
+      setState(() {
+        _otpLockoutSecondsLeft -= 1;
+        if (_otpLockoutSecondsLeft <= 0) {
+          _otpLockoutSecondsLeft = 0;
+          t.cancel();
+        }
+      });
+    });
   }
 
   Future<void> _loginWithPassword() async {
@@ -120,6 +170,23 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (_otpLockedOut) {
+      setState(() {
+        _errorMessage =
+            'Too many OTP attempts. Try again in $_otpLockoutSecondsLeft seconds.';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    if (_otpCoolingDown) {
+      setState(() {
+        _errorMessage = 'Please wait $_otpCooldownSecondsLeft seconds to resend.';
+        _successMessage = null;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -134,6 +201,18 @@ class _LoginScreenState extends State<LoginScreen> {
         _successMessage = 'OTP sent. Enter it below to log in.';
       });
     } on ApiException catch (e) {
+      if (e.code == BackendErrorCode.rateLimited) {
+        final int seconds = e.retryAfterSeconds ?? 30;
+        // Start cooldown first; message can reference it.
+        _startOtpCooldown(seconds);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Too many requests. Try again in $seconds seconds.';
+          _successMessage = null;
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
         _errorMessage = e.message;
@@ -161,6 +240,15 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (_otpLockedOut) {
+      setState(() {
+        _errorMessage =
+            'Too many OTP attempts. Try again in $_otpLockoutSecondsLeft seconds.';
+        _successMessage = null;
+      });
+      return;
+    }
+
     if (!_otpRequested) {
       setState(() {
         _errorMessage = 'Please request an OTP first.';
@@ -176,7 +264,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final Map<String, dynamic> res = await _api.verifyOtp(phone: phone, otp: otp);
+      final Map<String, dynamic> res =
+          await _api.verifyOtp(phone: phone, otp: otp);
       await _session.saveTokensFromResponse(res);
 
       setState(() {
@@ -185,6 +274,39 @@ class _LoginScreenState extends State<LoginScreen> {
         _navigateToDashboard = true;
       });
     } on ApiException catch (e) {
+      if (e.code == BackendErrorCode.otpExpired) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'OTP expired. Please request a new OTP.';
+          _successMessage = null;
+          _otpRequested = false;
+        });
+        return;
+      }
+
+      if (e.code == BackendErrorCode.otpRetryExceeded) {
+        final int seconds = e.lockoutSeconds ?? 300;
+        _startOtpLockout(seconds);
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              'Too many incorrect OTP attempts. Locked for $seconds seconds.';
+          _successMessage = null;
+        });
+        return;
+      }
+
+      if (e.code == BackendErrorCode.rateLimited) {
+        final int seconds = e.retryAfterSeconds ?? 30;
+        _startOtpCooldown(seconds);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Too many requests. Try again in $seconds seconds.';
+          _successMessage = null;
+        });
+        return;
+      }
+
       setState(() {
         _isLoading = false;
         _errorMessage = e.message;
@@ -437,18 +559,41 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (_otpLockedOut || _otpCoolingDown) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _otpLockedOut
+                            ? 'Locked for $_otpLockoutSecondsLeft seconds due to too many attempts.'
+                            : 'You can resend OTP in $_otpCooldownSecondsLeft seconds.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withAlpha(160),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                   Row(
                     children: <Widget>[
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: _isLoading ? null : _requestOtp,
-                          child: Text(_isLoading ? 'Sending...' : 'Send OTP'),
+                          onPressed: (_isLoading || _otpCoolingDown || _otpLockedOut)
+                              ? null
+                              : _requestOtp,
+                          child: Text(
+                            _isLoading
+                                ? 'Sending...'
+                                : (_otpCoolingDown
+                                    ? 'Wait...'
+                                    : (_otpLockedOut ? 'Locked' : 'Send OTP')),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _verifyOtpAndLogin,
+                          onPressed: (_isLoading || _otpLockedOut) ? null : _verifyOtpAndLogin,
                           child: Text(_isLoading ? 'Verifying...' : 'Login'),
                         ),
                       ),
