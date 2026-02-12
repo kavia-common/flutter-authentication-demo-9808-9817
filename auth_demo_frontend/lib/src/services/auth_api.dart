@@ -45,7 +45,10 @@ class AuthApi {
     if (decoded is Map<String, dynamic>) {
       return decoded;
     }
-    throw ApiException('Unexpected response format', statusCode: res.statusCode);
+    throw ApiException.message(
+      'Unexpected response format',
+      statusCode: res.statusCode,
+    );
   }
 
   Future<Map<String, dynamic>> _postJson(

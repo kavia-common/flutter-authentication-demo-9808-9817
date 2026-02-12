@@ -139,8 +139,29 @@ class ApiErrorDetails {
 
 /// Simple exception wrapper to surface API errors to the UI, including backend
 /// error codes for tailored UX.
+///
+/// This supports two construction modes:
+/// 1) `ApiException(ApiErrorDetails(...))` for rich error handling
+/// 2) `ApiException.message('...', statusCode: ...)` for quick failures such as
+///    unexpected response shapes.
 class ApiException implements Exception {
   ApiException(this.details);
+
+  /// Convenience constructor for quick/unknown errors.
+  ///
+  /// Kept to match existing call sites that throw with a message and statusCode.
+  factory ApiException.message(
+    String message, {
+    int statusCode = 0,
+  }) {
+    return ApiException(
+      ApiErrorDetails(
+        code: BackendErrorCode.unknown,
+        userMessage: message,
+        statusCode: statusCode,
+      ),
+    );
+  }
 
   final ApiErrorDetails details;
 
