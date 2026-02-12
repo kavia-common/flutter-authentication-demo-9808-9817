@@ -1,0 +1,5 @@
+Workspace archive (regenerated) path:
+../flutter-authentication-demo-9808-9817-workspace.tar.gz
+
+Absolute path:
+/home/kavia/workspace/code-generation/flutter-authentication-demo-9808-9817-workspace.tar.gz
